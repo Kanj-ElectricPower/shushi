@@ -26,5 +26,6 @@ export function seedData(): Omit<AppData, 'transactions'> {
     { id: 'quick-food', label: '食費', template: { kind: 'expense', categoryId: 'cat-0', tagId: 'tag-0' }, order: 0 },
     { id: 'quick-transit', label: '交通費', template: { kind: 'expense', categoryId: 'cat-1', tagId: 'tag-0' }, order: 1 },
   ];
-  return { accounts, categories, tags, incomeSources, recurrings: [], quickButtons };
+  // 年収の壁は税制改正で金額が変わるため、初期値は入れず設定画面で登録してもらう
+  return { accounts, categories, tags, incomeSources, recurrings: [], quickButtons, incomeWalls: [] };
 }

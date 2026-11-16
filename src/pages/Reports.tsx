@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { MonthNav, nameOf, signedYen, useData, yen } from '../components/ui';
 import { addMonths, formatDate, monthOf, today } from '../domain/dates';
-import { annualIncome, monthSummary, unsettledReimbursables } from '../domain/summary';
-import { INCOME_TYPE_LABEL, type IncomeType } from '../domain/types';
+import { monthSummary, unsettledReimbursables } from '../domain/summary';
+import { AnnualIncome } from './AnnualIncome';
 
 function Breakdown({ title, totals, names }: { title: string; totals: Map<string, number>; names: { id: string; name: string }[] }) {
   const rows = [...totals.entries()].sort((a, b) => b[1] - a[1]);
@@ -33,24 +33,33 @@ function Breakdown({ title, totals, names }: { title: string; totals: Map<string
   );
 }
 
-const TAX_TYPES: IncomeType[] = ['salary', 'misc', 'family', 'other'];
-
 export function Reports() {
   const data = useData();
   const navigate = useNavigate();
   const [month, setMonth] = useState(monthOf(today()));
-  const year = Number(month.slice(0, 4));
+  const [view, setView] = useState<'month' | 'year'>('month');
   const summary = monthSummary(data.transactions, data.incomeSources, month);
   const trend = Array.from({ length: 12 }, (_, i) => addMonths(month, i - 11)).map((m) => {
     const s = monthSummary(data.transactions, data.incomeSources, m);
     return { month: `${Number(m.slice(5))}月`, 収入: s.income, 支出: s.expense };
   });
-  const annual = annualIncome(data.transactions, data.incomeSources, year);
   const unsettled = unsettledReimbursables(data.transactions).sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <>
       <h1>集計</h1>
+      <div className="segmented" role="group" aria-label="集計の種類">
+        <button type="button" aria-pressed={view === 'month'} onClick={() => setView('month')}>
+          月の収支
+        </button>
+        <button type="button" aria-pressed={view === 'year'} onClick={() => setView('year')}>
+          年間の所得
+        </button>
+      </div>
+      {view === 'year' ? (
+        <AnnualIncome />
+      ) : (
+        <>
       <MonthNav month={month} onChange={setMonth} />
       <div className="card">
         <div className="summary">
@@ -99,48 +108,6 @@ export function Reports() {
         </ResponsiveContainer>
       </div>
 
-      <h2>{year}年の所得(入金日ベース)</h2>
-      <div className="card scroll-x">
-        {annual.rows.length === 0 ? (
-          <span className="muted">記録がありません。</span>
-        ) : (
-          <table className="plain num">
-            <thead>
-              <tr>
-                <th>収入源</th>
-                <th>額面</th>
-                <th>源泉徴収</th>
-                <th>手取り</th>
-              </tr>
-            </thead>
-            <tbody>
-              {annual.rows.map((r) => (
-                <tr key={r.sourceId}>
-                  <td>{nameOf(data.incomeSources, r.sourceId || undefined)}</td>
-                  <td>{yen(r.gross)}</td>
-                  <td>{yen(r.withholding)}</td>
-                  <td>{yen(r.net)}</td>
-                </tr>
-              ))}
-              {TAX_TYPES.filter((t) => annual.byType.has(t)).map((t) => {
-                const v = annual.byType.get(t)!;
-                return (
-                  <tr key={t} style={{ fontWeight: 600 }}>
-                    <td>{INCOME_TYPE_LABEL[t]} 計</td>
-                    <td>{yen(v.gross)}</td>
-                    <td>{yen(v.withholding)}</td>
-                    <td>{yen(v.net)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        <p className="sub" style={{ margin: '8px 0 0' }}>
-          額面が未入力の記録は手取り額を額面として集計しています。
-        </p>
-      </div>
-
       <h2>精算待ちの立替</h2>
       <div className="card flush">
         {unsettled.length === 0 && (
@@ -165,6 +132,8 @@ export function Reports() {
         )}
       </div>
       <p className="sub">入金されたら、収入源「立替精算」で収入を記録し、精算された立替を選んでください。</p>
+        </>
+      )}
     </>
   );
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseBackupJson, toBackupJson, toCsv } from './backup';
 import { accountBalance, cardRecurringId, cardStatements, cardUnpaid, nextCardPayment } from './balance';
 import { isComplete, occurrences, pendingItems } from './recurring';
-import { annualIncome, monthSummary, unsettledReimbursables } from './summary';
+import { annualIncome, monthSummary, taxableYear, unsettledReimbursables } from './summary';
 import type { Account, AppData, IncomeSource, Recurring, Tx } from './types';
 
 const bank: Account = { id: 'bank', name: '銀行', type: 'bank', openingBalance: 100000, order: 0 };
@@ -213,6 +213,7 @@ describe('バックアップ', () => {
     incomeSources: sources,
     recurrings: [],
     quickButtons: [],
+    incomeWalls: [{ id: 'w', name: '税の壁', amount: 1600000, basis: 'salary', order: 0 }],
   };
 
   it('書き出したJSONを読み戻せる', () => {
@@ -227,5 +228,38 @@ describe('バックアップ', () => {
   it('CSVは名称に変換し、カンマと引用符をエスケープする', () => {
     const lines = toCsv(data).split('\r\n');
     expect(lines[1]).toBe('2026-11-01,支出,1200,銀行,,食費,,,,,,,"ランチ, ""A""定食"');
+  });
+});
+
+describe('年間の課税対象収入', () => {
+  it('1〜12月に入金された給与・雑所得だけを月別に数える', () => {
+    const txs = [
+      tx({ date: '2027-01-25', kind: 'income', amount: 50000, accountId: 'bank', incomeSourceId: 'tokyu' }),
+      tx({ date: '2027-01-31', kind: 'income', amount: 9694, accountId: 'bank', incomeSourceId: 'ta', gross: 10000, withholding: 306 }),
+      tx({ date: '2027-03-10', kind: 'income', amount: 4000, accountId: 'bank', incomeSourceId: 'spot' }),
+      tx({ date: '2027-04-20', kind: 'income', amount: 10000, accountId: 'bank', incomeSourceId: 'allowance' }),
+      tx({ date: '2027-05-01', kind: 'income', amount: 12500, accountId: 'bank', incomeSourceId: 'trip' }),
+      tx({ date: '2027-06-25', kind: 'income', amount: 9694, accountId: 'bank', incomeSourceId: 'ta' }),
+      tx({ date: '2026-12-25', kind: 'income', amount: 70000, accountId: 'bank', incomeSourceId: 'tokyu' }),
+      tx({ date: '2028-01-05', kind: 'income', amount: 70000, accountId: 'bank', incomeSourceId: 'tokyu' }),
+    ];
+    const y = taxableYear(txs, sources, 2027);
+    expect([y.salary, y.misc, y.taxable, y.withholding]).toEqual([69694, 4000, 73694, 306]);
+    expect(y.months[0]).toEqual({ month: 1, salary: 60000, misc: 0 });
+    expect(y.months[2]).toEqual({ month: 3, salary: 0, misc: 4000 });
+    expect(y.rows.map((r) => [r.sourceId, r.gross])).toEqual([
+      ['tokyu', 50000],
+      ['ta', 19694],
+      ['spot', 4000],
+    ]);
+    // 源泉徴収ありの TA で額面が未入力の 6 月分
+    expect(y.missingGross).toBe(1);
+  });
+});
+
+describe('古いバックアップ', () => {
+  it('年収の壁が無いバックアップも読める', () => {
+    const old = { app: 'balance-of-payment', version: 1, accounts: [], transactions: [], categories: [], tags: [], incomeSources: [], recurrings: [], quickButtons: [] };
+    expect(parseBackupJson(JSON.stringify(old)).incomeWalls).toEqual([]);
   });
 });

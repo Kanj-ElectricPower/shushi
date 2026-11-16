@@ -110,3 +110,62 @@ export function annualIncome(txs: Tx[], sources: IncomeSource[], year: number): 
     byType,
   };
 }
+
+export interface TaxableMonth {
+  /** 1-12 */
+  month: number;
+  salary: number;
+  misc: number;
+}
+
+export interface TaxableYear {
+  /** 給与の額面合計(額面未入力の記録は手取り額) */
+  salary: number;
+  /** 雑所得の収入合計 */
+  misc: number;
+  /** 給与＋雑所得 */
+  taxable: number;
+  withholding: number;
+  months: TaxableMonth[];
+  /** 収入源ごと(給与・雑所得のみ) */
+  rows: IncomeRow[];
+  /** 源泉徴収ありの収入源なのに額面が未入力の件数(手取り額で数えているため少なめに出る) */
+  missingGross: number;
+}
+
+/**
+ * 1〜12月に入金された、課税対象の収入(給与・雑所得)。年収の壁の確認用。
+ * 親からの支給・還付金・立替精算は含めない。
+ */
+export function taxableYear(txs: Tx[], sources: IncomeSource[], year: number): TaxableYear {
+  const sourceOf = new Map(sources.map((s) => [s.id, s]));
+  const months: TaxableMonth[] = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, salary: 0, misc: 0 }));
+  const rows = new Map<string, IncomeRow>();
+  const result: TaxableYear = { salary: 0, misc: 0, taxable: 0, withholding: 0, months, rows: [], missingGross: 0 };
+  for (const tx of txs) {
+    if (tx.kind !== 'income' || !tx.date.startsWith(`${year}-`)) continue;
+    const source = tx.incomeSourceId ? sourceOf.get(tx.incomeSourceId) : undefined;
+    if (!source || (source.incomeType !== 'salary' && source.incomeType !== 'misc')) continue;
+    const gross = tx.gross ?? tx.amount;
+    const withholding = tx.withholding ?? 0;
+    const m = months[Number(tx.date.slice(5, 7)) - 1];
+    if (source.incomeType === 'salary') {
+      m.salary += gross;
+      result.salary += gross;
+    } else {
+      m.misc += gross;
+      result.misc += gross;
+    }
+    result.withholding += withholding;
+    if (source.hasWithholding && tx.gross === undefined) result.missingGross += 1;
+    const row = rows.get(source.id) ?? { sourceId: source.id, gross: 0, withholding: 0, net: 0, count: 0 };
+    row.gross += gross;
+    row.withholding += withholding;
+    row.net += tx.amount;
+    row.count += 1;
+    rows.set(source.id, row);
+  }
+  result.taxable = result.salary + result.misc;
+  result.rows = sources.filter((s) => rows.has(s.id)).map((s) => rows.get(s.id)!);
+  return result;
+}

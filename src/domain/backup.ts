@@ -1,6 +1,8 @@
 import type { AppData, Tx } from './types';
 
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
+/** 後から追加した表。古いバックアップに無ければ空として読む */
+const OPTIONAL_TABLES: (keyof AppData)[] = ['incomeWalls'];
 const TABLES: (keyof AppData)[] = [
   'accounts',
   'transactions',
@@ -9,6 +11,7 @@ const TABLES: (keyof AppData)[] = [
   'incomeSources',
   'recurrings',
   'quickButtons',
+  'incomeWalls',
 ];
 
 export function toBackupJson(data: AppData, exportedAt: string): string {
@@ -24,6 +27,10 @@ export function parseBackupJson(text: string): AppData {
   if (raw.version > BACKUP_VERSION) throw new Error('新しいバージョンのバックアップのため読み込めません');
   const data = {} as Record<string, unknown[]>;
   for (const table of TABLES) {
+    if (raw[table] === undefined && OPTIONAL_TABLES.includes(table)) {
+      data[table] = [];
+      continue;
+    }
     if (!Array.isArray(raw[table])) throw new Error(`バックアップに ${table} がありません`);
     data[table] = raw[table];
   }

@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
-import type { Account, AppData, Category, IncomeSource, QuickButton, Recurring, Tag, Tx } from '../domain/types';
+import type { Account, AppData, Category, IncomeSource, IncomeWall, QuickButton, Recurring, Tag, Tx } from '../domain/types';
 import { seedData } from './seed';
 
 class AppDb extends Dexie {
@@ -11,6 +11,7 @@ class AppDb extends Dexie {
   incomeSources!: Table<IncomeSource, string>;
   recurrings!: Table<Recurring, string>;
   quickButtons!: Table<QuickButton, string>;
+  incomeWalls!: Table<IncomeWall, string>;
 
   constructor() {
     super('balance-of-payment');
@@ -23,6 +24,8 @@ class AppDb extends Dexie {
       recurrings: 'id',
       quickButtons: 'id',
     });
+    // v2: 年収の壁を追加
+    this.version(2).stores({ incomeWalls: 'id' });
     this.on('populate', (tx) => {
       const seed = seedData();
       tx.table('accounts').bulkAdd(seed.accounts);
@@ -31,6 +34,7 @@ class AppDb extends Dexie {
       tx.table('incomeSources').bulkAdd(seed.incomeSources);
       tx.table('recurrings').bulkAdd(seed.recurrings);
       tx.table('quickButtons').bulkAdd(seed.quickButtons);
+      tx.table('incomeWalls').bulkAdd(seed.incomeWalls);
     });
   }
 }
@@ -42,7 +46,7 @@ export const newId = () => crypto.randomUUID();
 const byOrder = <T extends { order: number }>(list: T[]) => [...list].sort((a, b) => a.order - b.order);
 
 export async function loadAll(): Promise<AppData> {
-  const [accounts, transactions, categories, tags, incomeSources, recurrings, quickButtons] = await Promise.all([
+  const [accounts, transactions, categories, tags, incomeSources, recurrings, quickButtons, incomeWalls] = await Promise.all([
     db.accounts.toArray(),
     db.transactions.toArray(),
     db.categories.toArray(),
@@ -50,6 +54,7 @@ export async function loadAll(): Promise<AppData> {
     db.incomeSources.toArray(),
     db.recurrings.toArray(),
     db.quickButtons.toArray(),
+    db.incomeWalls.toArray(),
   ]);
   return {
     accounts: byOrder(accounts),
@@ -59,6 +64,7 @@ export async function loadAll(): Promise<AppData> {
     incomeSources: byOrder(incomeSources),
     recurrings: byOrder(recurrings),
     quickButtons: byOrder(quickButtons),
+    incomeWalls: byOrder(incomeWalls),
   };
 }
 
@@ -76,6 +82,7 @@ export async function replaceAll(data: AppData): Promise<void> {
     await db.incomeSources.bulkAdd(data.incomeSources);
     await db.recurrings.bulkAdd(data.recurrings);
     await db.quickButtons.bulkAdd(data.quickButtons);
+    await db.incomeWalls.bulkAdd(data.incomeWalls);
   });
 }
 

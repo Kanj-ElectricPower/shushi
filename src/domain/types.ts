@@ -125,6 +125,23 @@ export interface QuickButton {
   order: number;
 }
 
+/** salary=給与の額面合計と比べる / taxable=給与と雑所得の合計と比べる */
+export type WallBasis = 'salary' | 'taxable';
+
+/** 年収の壁(自分で登録する目安の金額) */
+export interface IncomeWall {
+  id: string;
+  name: string;
+  amount: number;
+  basis: WallBasis;
+  order: number;
+}
+
+export const WALL_BASIS_LABEL: Record<WallBasis, string> = {
+  salary: '給与の額面合計',
+  taxable: '給与＋雑所得の合計',
+};
+
 export interface AppData {
   accounts: Account[];
   transactions: Tx[];
@@ -133,6 +150,7 @@ export interface AppData {
   incomeSources: IncomeSource[];
   recurrings: Recurring[];
   quickButtons: QuickButton[];
+  incomeWalls: IncomeWall[];
 }
 
 export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {

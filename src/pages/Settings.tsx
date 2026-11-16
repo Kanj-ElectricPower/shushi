@@ -17,6 +17,9 @@ import {
   type Freq,
   type IncomeSource,
   type IncomeType,
+  type IncomeWall,
+  type WallBasis,
+  WALL_BASIS_LABEL,
   type OpeningDue,
   type QuickButton,
   type Recurring,
@@ -31,6 +34,7 @@ const SECTIONS: { id: string; name: string; hint: string }[] = [
   { id: 'sources', name: '収入源', hint: 'バイト先、所得区分、源泉徴収の有無' },
   { id: 'recurrings', name: '定期予定', hint: 'お小遣い、NISA積立、サブスクなど' },
   { id: 'quick', name: 'クイック入力ボタン', hint: 'ホームに並べるよく使う支出' },
+  { id: 'walls', name: '年収の壁', hint: '年間の所得集計で目安にする金額' },
   { id: 'reconcile', name: '残高照合', hint: '実際の残高との差額を確認して調整' },
   { id: 'backup', name: 'バックアップ', hint: '書き出し・読み込み・初期化' },
   { id: 'diagnostics', name: '動作チェック', hint: '保存が終わらないときの診断' },
@@ -58,7 +62,7 @@ async function stripFromTemplates(data: AppData, keys: TemplateKey[], id: string
   }
 }
 
-type OrderedTable = 'accounts' | 'categories' | 'tags' | 'incomeSources' | 'recurrings' | 'quickButtons';
+type OrderedTable = 'accounts' | 'categories' | 'tags' | 'incomeSources' | 'recurrings' | 'quickButtons' | 'incomeWalls';
 
 /** index の項目を delta(-1=上, +1=下)だけ動かし、並び順を 0 からの連番で保存し直す。 */
 async function moveItem(table: OrderedTable, items: { id: string }[], index: number, delta: number) {
@@ -830,6 +834,93 @@ function QuickSection() {
   );
 }
 
+// ---------- 年収の壁 ----------
+
+const BASIS_OPTIONS = (Object.keys(WALL_BASIS_LABEL) as WallBasis[]).map((id) => ({ id, name: WALL_BASIS_LABEL[id] }));
+
+function WallForm({ wall, onClose }: { wall?: IncomeWall; onClose: () => void }) {
+  const data = useData();
+  const [name, setName] = useState(wall?.name ?? '');
+  const [amount, setAmount] = useState(wall ? String(wall.amount) : '');
+  const [basis, setBasis] = useState<WallBasis>(wall?.basis ?? 'salary');
+  const [error, setError] = useState('');
+  const { busy, run } = useBusy();
+
+  const save = async () => {
+    if (!name.trim()) return setError('名前を入力してください');
+    const value = parseAmount(amount);
+    if (value === undefined || Number.isNaN(value) || value <= 0) return setError('金額を1円以上の整数で入力してください');
+    await db.incomeWalls.put({
+      id: wall?.id ?? newId(),
+      order: wall?.order ?? nextOrder(data.incomeWalls),
+      name: name.trim(),
+      amount: value,
+      basis,
+    });
+    onClose();
+  };
+  const remove = async () => {
+    if (!wall || !window.confirm(`「${wall.name}」を削除しますか？`)) return;
+    await db.incomeWalls.delete(wall.id);
+    onClose();
+  };
+
+  return (
+    <form
+      className="card"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void run(save);
+      }}
+    >
+      <Field label="名前">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 所得税がかからない上限" />
+      </Field>
+      <Field label="金額(年間)">
+        <AmountInput value={amount} onChange={setAmount} placeholder="0" />
+      </Field>
+      <Field label="比べる対象">
+        <Select value={basis} onChange={(v) => setBasis(v as WallBasis)} options={BASIS_OPTIONS} />
+      </Field>
+      <p className="sub">
+        「給与の額面合計」は収入源の区分が「給与」のものだけ、「給与＋雑所得の合計」は雑所得(SPOTJOBS など)も含めた額と比べます。
+      </p>
+      <FormActions onCancel={onClose} onDelete={wall ? () => void run(remove) : undefined} error={error} busy={busy} />
+    </form>
+  );
+}
+
+function WallsSection() {
+  const data = useData();
+  const [editing, setEditing] = useState<IncomeWall | 'new' | null>(null);
+  if (editing) return <WallForm wall={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />;
+  return (
+    <>
+      <p className="sub">
+        登録した金額と、その年の1〜12月に入金された収入を「集計 → 年間の所得」で比べます。壁の金額は税制改正で変わるため、国税庁などで最新の金額を確かめて登録してください。
+      </p>
+      <ListCard
+        table="incomeWalls"
+        label={(w) => w.name}
+        items={data.incomeWalls}
+        onSelect={setEditing}
+        empty="まだ登録されていません。"
+        render={(w) => (
+          <div className="main">
+            <div className="title">{w.name}</div>
+            <div className="sub">
+              {yen(w.amount)}・{WALL_BASIS_LABEL[w.basis]}と比較
+            </div>
+          </div>
+        )}
+      />
+      <button className="btn block" onClick={() => setEditing('new')}>
+        ＋ 年収の壁を追加
+      </button>
+    </>
+  );
+}
+
 // ---------- 残高照合 ----------
 
 function ReconcileRow({ account }: { account: Account }) {
@@ -1023,6 +1114,7 @@ export function Settings() {
       {current.id === 'sources' && <SourcesSection />}
       {current.id === 'recurrings' && <RecurringsSection />}
       {current.id === 'quick' && <QuickSection />}
+      {current.id === 'walls' && <WallsSection />}
       {current.id === 'reconcile' && <ReconcileSection />}
       {current.id === 'backup' && <BackupSection />}
       {current.id === 'diagnostics' && <DiagnosticsSection />}
