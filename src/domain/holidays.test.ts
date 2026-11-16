@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardStatements, cardRecurringId, nextCardPayment } from './balance';
+import { cardStatements, cardRecurringId, nextCardPayment, upcomingDues } from './balance';
 import { holidaysOf, isBankBusinessDay, shiftToBusinessDay } from './holidays';
 import { pendingItems } from './recurring';
 import type { Account, Tx } from './types';
@@ -102,5 +102,46 @@ describe('カードの引落日(翌月4日・休日は翌営業日)', () => {
     expect(cardStatements(card, [...txs, oldPayment], '2026-10-31').find((s) => s.dueDate === '2026-10-04')?.paid).toBe(true);
     const skippedCard = { ...card, skipped: ['2026-10-05'] };
     expect(cardStatements(skippedCard, txs, '2026-10-31').find((s) => s.dueDate === '2026-10-04')?.skipped).toBe(true);
+  });
+});
+
+describe('記録開始時点の未払い額(引落日ごと)', () => {
+  const card: Account = {
+    id: 'card',
+    name: 'カード',
+    type: 'card',
+    openingBalance: -28000,
+    order: 0,
+    closingDay: 15,
+    paymentDay: 4,
+    paymentMonthOffset: 1,
+    paymentAccountId: 'bank',
+    openingDue: [
+      { dueDate: '2026-12-04', amount: 23000 }, // 締め済み(10/16〜11/15 の利用)
+      { dueDate: '2027-01-04', amount: 5000 }, // 利用期間中(11/16〜)
+    ],
+  };
+
+  it('入力すべき引落の回を出す', () => {
+    expect(upcomingDues(card as Required<Pick<Account, 'closingDay' | 'paymentDay'>> & Account, '2026-11-16')).toEqual([
+      { periodStart: '2026-10-16', closingDate: '2026-11-15', dueDate: '2026-12-04', paymentDate: '2026-12-04' },
+      { periodStart: '2026-11-16', closingDate: '2026-12-15', dueDate: '2027-01-04', paymentDate: '2027-01-04' },
+    ]);
+    // 引落日の前は、前の回もまだ未払い
+    expect(upcomingDues({ closingDay: 15, paymentDay: 26 }, '2026-11-16').map((d) => d.dueDate)).toEqual([
+      '2026-11-26',
+      '2026-12-26',
+      '2027-01-26',
+    ]);
+  });
+
+  it('記録がなくても、開始時点の未払い分が引落予定額に入る', () => {
+    expect(nextCardPayment(card, [], '2026-11-16')?.amount).toBe(23000);
+    const use: Tx = { id: 'u', date: '2026-11-20', kind: 'expense', amount: 1200, accountId: 'card', createdAt: 1 };
+    const s = cardStatements(card, [use], '2026-12-15');
+    expect(s.map((x) => [x.dueDate, x.amount])).toEqual([
+      ['2026-12-04', 23000],
+      ['2027-01-04', 6200],
+    ]);
   });
 });

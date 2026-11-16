@@ -1,5 +1,5 @@
-import { dateInMonth, monthOf, addMonths } from './dates';
-import { shiftToBusinessDay } from './holidays';
+import { addDays, addMonths, dateInMonth, monthOf } from './dates';
+import { shiftToBusinessDay, type BusinessDayShift } from './holidays';
 import type { Account, Tx } from './types';
 
 /** この記録が口座残高をいくら動かすか。 */
@@ -55,14 +55,19 @@ export function cardStatements(card: Account, txs: Tx[], upto: string): CardStat
   const charges = txs.filter(
     (tx) => tx.kind !== 'adjustment' && !(tx.kind === 'transfer' && tx.toAccountId === card.id) && txEffect(tx, card.id) !== 0,
   );
-  if (charges.length === 0) return [];
+  const openingDue = card.openingDue?.filter((d) => d.amount !== 0) ?? [];
+  if (charges.length === 0 && openingDue.length === 0) return [];
   const closingOf = (month: string) => {
     const [y, m] = month.split('-').map(Number);
     return dateInMonth(y, m, closingDay);
   };
-  const first = charges.reduce((min, tx) => (tx.date < min ? tx.date : min), charges[0].date);
+  // 利用のあった最初の月と、開始時点の未払い分が属する締め月のうち早いほうから数える
+  const startMonths = [
+    ...charges.map((tx) => monthOf(tx.date)),
+    ...openingDue.map((d) => addMonths(monthOf(d.dueDate), -offset)),
+  ].sort();
   const result: CardStatement[] = [];
-  let month = monthOf(first);
+  let month = startMonths[0];
   let prevClosing = closingOf(addMonths(month, -1));
   for (;;) {
     const closingDate = closingOf(month);
@@ -73,7 +78,7 @@ export function cardStatements(card: Account, txs: Tx[], upto: string): CardStat
     const keys = [dueDate, paymentDate];
     const amount = charges
       .filter((tx) => tx.date > prevClosing && tx.date <= closingDate)
-      .reduce((sum, tx) => sum - txEffect(tx, card.id), 0);
+      .reduce((sum, tx) => sum - txEffect(tx, card.id), 0) + openingDue.filter((d) => d.dueDate === dueDate).reduce((sum, d) => sum + d.amount, 0);
     const paid = txs.some((tx) => tx.recurringId === cardRecurringId(card.id) && keys.includes(tx.recurringDate ?? ''));
     const skipped = keys.some((k) => card.skipped?.includes(k));
     result.push({ cardId: card.id, closingDate, dueDate, paymentDate, amount, paid, skipped });
@@ -89,4 +94,44 @@ export function nextCardPayment(card: Account, txs: Tx[], todayDate: string): Ca
   return cardStatements(card, txs, todayDate).find(
     (s) => s.paymentDate >= todayDate && !s.paid && s.amount > 0 && !s.skipped,
   );
+}
+
+export interface CardSchedule {
+  closingDay: number;
+  paymentDay: number;
+  paymentMonthOffset?: number;
+  paymentShift?: BusinessDayShift;
+}
+
+export interface UpcomingDue {
+  /** 利用期間の初日と締め日 */
+  periodStart: string;
+  closingDate: string;
+  /** 約定の引落日 */
+  dueDate: string;
+  /** 実際の引落日 */
+  paymentDate: string;
+}
+
+/**
+ * todayDate の時点でまだ引き落とされていない回(締め済みで引落前の回と、利用期間中の回)。
+ * 記録開始時点の未払い額を、引落日ごとに入力してもらうために使う。
+ */
+export function upcomingDues(schedule: CardSchedule, todayDate: string): UpcomingDue[] {
+  const offset = schedule.paymentMonthOffset ?? 1;
+  const closingOf = (month: string) => {
+    const [y, m] = month.split('-').map(Number);
+    return dateInMonth(y, m, schedule.closingDay);
+  };
+  const result: UpcomingDue[] = [];
+  const thisMonth = monthOf(todayDate);
+  for (let month = addMonths(thisMonth, -(offset + 1)); month <= addMonths(thisMonth, 1); month = addMonths(month, 1)) {
+    const closingDate = closingOf(month);
+    const periodStart = addDays(closingOf(addMonths(month, -1)), 1);
+    const [y, m] = month.split('-').map(Number);
+    const dueDate = dateInMonth(y, m + offset, schedule.paymentDay);
+    const paymentDate = shiftToBusinessDay(dueDate, schedule.paymentShift ?? 'next');
+    if (paymentDate >= todayDate && periodStart <= todayDate) result.push({ periodStart, closingDate, dueDate, paymentDate });
+  }
+  return result;
 }

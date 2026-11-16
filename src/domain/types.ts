@@ -18,10 +18,21 @@ export interface Account {
   paymentMonthOffset?: number;
   /** カードのみ: 引落日が土日祝・年末年始のときにずらす方向(未設定は翌営業日) */
   paymentShift?: BusinessDayShift;
+  /**
+   * カードのみ: 記録開始時点でまだ引き落とされていない利用額を、約定の引落日ごとに持つ。
+   * 合計は openingBalance(のマイナス)と一致させる。収支には入らず、未払い額と引落予定額にだけ反映する。
+   */
+  openingDue?: OpeningDue[];
   /** カードのみ: 引落口座 */
   paymentAccountId?: string;
   /** カードのみ: スキップした引落予定(約定日または実際の引落日) */
   skipped?: string[];
+}
+
+export interface OpeningDue {
+  /** 約定の引落日(YYYY-MM-DD) */
+  dueDate: string;
+  amount: number;
 }
 
 export type TxKind = 'expense' | 'income' | 'transfer' | 'adjustment';

@@ -5,8 +5,8 @@ import { Field, Select, download, nameOf, parseAmount, signedYen, useBusy, useDa
 import { db, loadAll, newId, replaceAll, resetAll, saveTx } from '../db/schema';
 import { DiagnosticsSection } from './Diagnostics';
 import { parseBackupJson, toBackupJson, toCsv } from '../domain/backup';
-import { accountBalance } from '../domain/balance';
-import { today } from '../domain/dates';
+import { accountBalance, upcomingDues } from '../domain/balance';
+import { formatDate, parseYmd, today } from '../domain/dates';
 import type { BusinessDayShift } from '../domain/holidays';
 import {
   ACCOUNT_TYPE_LABEL,
@@ -17,6 +17,7 @@ import {
   type Freq,
   type IncomeSource,
   type IncomeType,
+  type OpeningDue,
   type QuickButton,
   type Recurring,
   type Tx,
@@ -190,20 +191,48 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
   const [paymentAccountId, setPaymentAccountId] = useState(account?.paymentAccountId ?? '');
   const [paymentShift, setPaymentShift] = useState<BusinessDayShift>(account?.paymentShift ?? 'next');
   const [archived, setArchived] = useState(account?.archived ?? false);
+  const [dueAmounts, setDueAmounts] = useState<Record<string, string>>(() =>
+    Object.fromEntries((account?.openingDue ?? []).map((d) => [d.dueDate, String(d.amount)])),
+  );
   const [error, setError] = useState('');
   const { busy, run } = useBusy();
+  const todayDate = today();
+  // 締め日・引落日が決まっていれば、まだ引き落とされていない回ごとに未払い額を入れてもらう
+  const dues =
+    type === 'card' && closingDay && paymentDay
+      ? upcomingDues(
+          { closingDay: Number(closingDay), paymentDay: Number(paymentDay), paymentMonthOffset: Number(offset), paymentShift },
+          todayDate,
+        )
+      : [];
+  const legacyOpening = account?.type === 'card' && !account.openingDue && account.openingBalance !== 0 ? -account.openingBalance : 0;
 
   const save = async () => {
     if (!name.trim()) return setError('名前を入力してください');
     if (data.accounts.some((a) => a.name === name.trim() && a.id !== account?.id)) return setError('同じ名前の口座がすでにあります');
     const value = type === 'cash' ? 0 : parseAmount(opening);
     if (value === undefined || Number.isNaN(value)) return setError('金額を整数で入力してください');
+    let openingDue: OpeningDue[] | undefined = account?.openingDue;
+    let openingBalance = type === 'card' ? -value : value;
+    if (dues.length > 0) {
+      const entered: OpeningDue[] = [];
+      for (const d of dues) {
+        const amount = parseAmount(dueAmounts[d.dueDate] ?? '');
+        if (amount === undefined) continue;
+        if (Number.isNaN(amount) || amount < 0) return setError('未払い額は0以上の整数で入力してください');
+        if (amount > 0) entered.push({ dueDate: d.dueDate, amount });
+      }
+      // 引落済みの過去の回は残す(消すと、記録済みの引落と合わなくなる)。締め日などを変えて合わなくなった未来の回は捨てる
+      const kept = (account?.openingDue ?? []).filter((d) => d.dueDate < todayDate && !dues.some((x) => x.dueDate === d.dueDate));
+      openingDue = [...kept, ...entered];
+      openingBalance = -openingDue.reduce((sum, d) => sum + d.amount, 0);
+    }
     const next: Account = {
       id: account?.id ?? newId(),
       order: account?.order ?? nextOrder(data.accounts),
       name: name.trim(),
       type,
-      openingBalance: type === 'card' ? -value : value,
+      openingBalance,
       archived: archived || undefined,
     };
     if (type === 'card') {
@@ -213,6 +242,7 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
       next.paymentAccountId = paymentAccountId || undefined;
       next.paymentShift = paymentShift;
       next.skipped = account?.skipped;
+      next.openingDue = openingDue;
     }
     await db.accounts.put(next);
     onClose();
@@ -252,7 +282,7 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
       </Field>
       {type === 'cash' ? (
         <p className="sub">現金は収入・支出だけを記録し、残高は管理しません。</p>
-      ) : (
+      ) : dues.length > 0 ? null : (
         <Field label={type === 'card' ? '記録開始時点の未払い額' : type === 'nisa' ? '記録開始時点の積立元本' : '記録開始時点の残高'}>
           <AmountInput value={opening} onChange={setOpening} allowNegative />
         </Field>
@@ -281,9 +311,35 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
           <Field label="引落日が土日祝・年末年始のとき">
             <Select value={paymentShift} onChange={(v) => setPaymentShift(v as BusinessDayShift)} options={SHIFT_OPTIONS} />
           </Field>
-          <p className="sub">
-            締め日と引落日を設定すると、次回の引落予定額を計算し、引落日にホームへ確定ボタンを表示します。記録開始より前の利用分は予定額に含まれないため、最初の引落は金額を修正して確定してください。
-          </p>
+          {dues.length > 0 ? (
+            <div className="card">
+              <strong>記録を始める前に使った分(まだ引き落とされていない分)</strong>
+              <p className="sub">
+                カード会社のアプリの「お支払い金額」「ご利用中の金額」を、引落日ごとに入れてください。収支には入らず、未払い額と引落予定額にだけ反映されます。このアプリに記録した利用分は含めないでください。
+              </p>
+              {legacyOpening > 0 && (
+                <div className="notice">以前入力した未払い額 {yen(legacyOpening)} を、引落日ごとに分けて入れ直してください。保存するとこちらの金額に置き換わります。</div>
+              )}
+              {dues.map((d) => {
+                const start = parseYmd(d.periodStart);
+                const end = parseYmd(d.closingDate);
+                return (
+                  <Field
+                    key={d.dueDate}
+                    label={`${formatDate(d.paymentDate)} 引落分(${start.m}/${start.d}〜${end.m}/${end.d}の利用${d.closingDate >= todayDate ? '・利用期間中' : ''})`}
+                  >
+                    <AmountInput
+                      value={dueAmounts[d.dueDate] ?? ''}
+                      onChange={(v) => setDueAmounts((prev) => ({ ...prev, [d.dueDate]: v }))}
+                      placeholder="0"
+                    />
+                  </Field>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="sub">締め日と引落日を設定すると、次回の引落予定額を計算し、引落日にホームへ確定ボタンを表示します。</p>
+          )}
         </>
       )}
       {account && (
