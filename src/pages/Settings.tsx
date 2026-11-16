@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { AmountInput } from '../components/AmountInput';
 import { Field, Select, download, nameOf, parseAmount, signedYen, useBusy, useData, useScrollTop, yen } from '../components/ui';
 import { db, loadAll, newId, replaceAll, resetAll, saveTx } from '../db/schema';
+import { DiagnosticsSection } from './Diagnostics';
 import { parseBackupJson, toBackupJson, toCsv } from '../domain/backup';
 import { accountBalance } from '../domain/balance';
 import { today } from '../domain/dates';
@@ -30,6 +31,7 @@ const SECTIONS: { id: string; name: string; hint: string }[] = [
   { id: 'quick', name: 'クイック入力ボタン', hint: 'ホームに並べるよく使う支出' },
   { id: 'reconcile', name: '残高照合', hint: '実際の残高との差額を確認して調整' },
   { id: 'backup', name: 'バックアップ', hint: '書き出し・読み込み・初期化' },
+  { id: 'diagnostics', name: '動作チェック', hint: '保存が終わらないときの診断' },
 ];
 
 const nextOrder = (list: { order: number }[]) => Math.max(-1, ...list.map((x) => x.order)) + 1;
@@ -956,6 +958,7 @@ export function Settings() {
       {current.id === 'quick' && <QuickSection />}
       {current.id === 'reconcile' && <ReconcileSection />}
       {current.id === 'backup' && <BackupSection />}
+      {current.id === 'diagnostics' && <DiagnosticsSection />}
     </>
   );
 }
