@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
-import { DataContext } from './components/ui';
+import { DataContext, Toaster } from './components/ui';
 import { useAppData } from './db/schema';
 import { Entry } from './pages/Entry';
 import { History } from './pages/History';
@@ -33,6 +33,7 @@ export function App() {
           <Route path="/settings/:section" element={<Settings />} />
         </Routes>
       </main>
+      <Toaster />
       <div className="tabbar">
         <nav aria-label="メニュー">
           <NavLink to="/" end>

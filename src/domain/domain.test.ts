@@ -93,6 +93,16 @@ describe('クレジットカード', () => {
     expect(cardStatements(card, all, '2026-12-10').find((s) => s.paymentDate === '2026-12-10')?.paid).toBe(true);
     expect(nextCardPayment(card, all, '2026-12-10')?.paymentDate).toBe('2027-01-10');
   });
+
+  it('「＋」から手入力した引落も引落済みとして扱い、予定を二重に出さない', () => {
+    const manual = tx({ date: '2026-12-11', kind: 'transfer', amount: 10000, accountId: 'bank', toAccountId: 'card' });
+    expect(pendingItems([], [card], txs, '2026-12-12').length).toBe(1);
+    expect(pendingItems([], [card], [...txs, manual], '2026-12-12')).toEqual([]);
+    expect(nextCardPayment(card, [...txs, manual], '2026-12-12')?.paymentDate).toBe('2027-01-10');
+    // 引落日から離れた日の振替は、その回の引落とはみなさない
+    const far = tx({ date: '2026-11-25', kind: 'transfer', amount: 10000, accountId: 'bank', toAccountId: 'card' });
+    expect(pendingItems([], [card], [...txs, far], '2026-12-12').length).toBe(1);
+  });
 });
 
 describe('月次収支', () => {

@@ -1,7 +1,20 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AmountInput } from '../components/AmountInput';
-import { Field, Select, download, nameOf, parseAmount, signedYen, useBusy, useData, useScrollTop, yen } from '../components/ui';
+import {
+  Field,
+  Select,
+  download,
+  lastBackupAt,
+  markBackup,
+  nameOf,
+  parseAmount,
+  signedYen,
+  useBusy,
+  useData,
+  useScrollTop,
+  yen,
+} from '../components/ui';
 import { db, loadAll, newId, replaceAll, resetAll, saveTx } from '../db/schema';
 import { DiagnosticsSection } from './Diagnostics';
 import { parseBackupJson, toBackupJson, toCsv } from '../domain/backup';
@@ -927,6 +940,7 @@ function ReconcileRow({ account }: { account: Account }) {
   const data = useData();
   const [actual, setActual] = useState('');
   const [done, setDone] = useState('');
+  const { busy, run } = useBusy();
   const isCard = account.type === 'card';
   const balance = accountBalance(account, data.transactions);
   const shown = isCard ? -balance : balance;
@@ -979,7 +993,7 @@ function ReconcileRow({ account }: { account: Account }) {
               ({diff < 0 ? '記録していない支出' : '記録していない収入'}が {yen(Math.abs(diff))} あります)
             </span>
           </p>
-          <button className="btn small" onClick={() => void adjust()}>
+          <button className="btn small" disabled={busy} onClick={() => void run(adjust)}>
             差額を不明金として記録
           </button>
         </>
@@ -1011,11 +1025,18 @@ function BackupSection() {
   const data = useData();
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [lastBackup, setLastBackup] = useState(lastBackupAt);
+  const [persisted, setPersisted] = useState<boolean | undefined>();
   const stamp = today().replace(/-/g, '');
+  useEffect(() => {
+    void navigator.storage?.persisted?.().then(setPersisted);
+  }, []);
 
   const exportJson = async () => {
     download(`shushi-backup-${stamp}.json`, toBackupJson(await loadAll(), new Date().toISOString()), 'application/json');
-    setMessage('バックアップを書き出しました。');
+    markBackup();
+    setLastBackup(lastBackupAt());
+    setMessage('バックアップを書き出しました。ダウンロードしたファイルを、Googleドライブなど端末の外にも保管してください。');
   };
   const importJson = async (file: File | undefined) => {
     setError('');
@@ -1043,6 +1064,10 @@ function BackupSection() {
       </p>
       <div className="card">
         <p>記録 {data.transactions.length} 件</p>
+        <p className="sub">
+          前回の書き出し: {lastBackup ? new Date(lastBackup).toLocaleDateString('ja-JP') : 'まだありません'}
+          {persisted !== undefined && (persisted ? '・自動削除からの保護: 有効' : '・自動削除からの保護: 無効(ホーム画面に追加すると有効になりやすくなります)')}
+        </p>
         <div className="actions">
           <button className="btn" onClick={() => void exportJson()}>
             バックアップを書き出す(JSON)
@@ -1099,6 +1124,7 @@ export function Settings() {
             </Link>
           ))}
         </div>
+        <p className="sub">この版の作成日時: {__BUILD_INFO__}</p>
       </>
     );
   }

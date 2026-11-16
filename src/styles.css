@@ -181,8 +181,8 @@ button.row {
 }
 
 .btn.small {
-  min-height: 36px;
-  padding: 6px 12px;
+  min-height: 44px;
+  padding: 8px 14px;
   font-size: 0.9rem;
 }
 
@@ -272,7 +272,7 @@ button.row {
   border: 0;
   background: none;
   border-radius: 8px;
-  min-height: 38px;
+  min-height: 44px;
   cursor: pointer;
 }
 
@@ -284,15 +284,15 @@ button.row {
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .chip {
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 999px;
-  padding: 6px 12px;
-  min-height: 36px;
+  padding: 8px 14px;
+  min-height: 44px;
   cursor: pointer;
 }
 
@@ -458,7 +458,44 @@ table.plain th {
 }
 
 .reorder .btn {
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
+}
+
+.toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(68px + env(safe-area-inset-bottom));
+  max-width: 528px;
+  margin: 0 auto;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+
+.toast.warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border: 1px solid var(--warn-text);
+}
+
+.toast.error {
+  background: var(--surface);
+  color: var(--expense);
+  border: 1px solid var(--expense);
+}
+
+.toast .btn {
+  flex: none;
+  color: var(--text);
 }

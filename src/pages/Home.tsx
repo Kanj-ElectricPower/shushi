@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { signedYen, useBusy, useData, yen } from '../components/ui';
+import { lastBackupAt, signedYen, toast, useBusy, useData, yen } from '../components/ui';
 import { db, newId, saveTx } from '../db/schema';
 import { accountBalance, cardUnpaid, nextCardPayment } from '../domain/balance';
 import { formatDate, formatMonth, monthOf, today } from '../domain/dates';
@@ -7,6 +7,8 @@ import { isComplete, pendingItems, type PendingItem } from '../domain/recurring'
 import { monthSummary, unsettledReimbursables } from '../domain/summary';
 import type { Tx } from '../domain/types';
 import type { EntryState } from './Entry';
+
+const BACKUP_REMIND_DAYS = 30;
 
 export function Home() {
   const data = useData();
@@ -21,6 +23,11 @@ export function Home() {
   const cards = accounts.filter((a) => a.type === 'card');
   const nisa = accounts.filter((a) => a.type === 'nisa');
   const unsettled = unsettledReimbursables(data.transactions).reduce((sum, t) => sum + t.amount, 0);
+  // バックアップの催促: 最後の書き出し(まだなら最初の記録)から30日たったら出す
+  const lastBackup = lastBackupAt();
+  const backupBase =
+    lastBackup ?? data.transactions.reduce<number | undefined>((min, t) => (min === undefined || t.createdAt < min ? t.createdAt : min), undefined);
+  const backupDue = backupBase !== undefined && data.transactions.length > 0 && Date.now() - backupBase > BACKUP_REMIND_DAYS * 86400000;
 
   const pendingTx = (item: PendingItem): Partial<Tx> => ({
     ...item.template,
@@ -31,6 +38,7 @@ export function Home() {
 
   const confirm = async (item: PendingItem) => {
     await saveTx({ ...(pendingTx(item) as Tx), id: newId(), createdAt: Date.now() });
+    toast(`「${item.name}」を記録しました`);
   };
 
   const edit = (item: PendingItem) => {
@@ -47,6 +55,7 @@ export function Home() {
       const rec = data.recurrings.find((r) => r.id === item.recurringId);
       if (rec) await db.recurrings.update(rec.id, { skipped: [...rec.skipped, item.recurringDate] });
     }
+    toast('スキップしました');
   };
 
   return (
@@ -64,7 +73,7 @@ export function Home() {
           </div>
           <div>
             <div className="label">収支</div>
-            <div className="value">{signedYen(summary.net)}</div>
+            <div className={`value ${summary.net < 0 ? 'expense' : ''}`}>{signedYen(summary.net)}</div>
           </div>
         </div>
         {(summary.adjustment !== 0 || summary.reimbursementDiff !== 0) && (
@@ -74,6 +83,13 @@ export function Home() {
           </div>
         )}
       </div>
+
+      {backupDue && (
+        <div className="notice">
+          {lastBackup ? `バックアップを${BACKUP_REMIND_DAYS}日以上書き出していません。` : 'まだバックアップを書き出していません。'}
+          データはこの端末の中にしかありません。<Link to="/settings/backup">設定 → バックアップ</Link>から書き出してください。
+        </div>
+      )}
 
       {money.length === 0 && (
         <div className="notice">

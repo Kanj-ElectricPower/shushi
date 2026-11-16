@@ -2,8 +2,15 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// 設定画面に出す版の情報。スマホでどの版が動いているかを確かめるため
+const buildTime = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' });
+// GitHub Actions でビルドしたときだけコミットが入る(Node の型定義を入れていないので globalThis 経由で読む)
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
+const commit = (env?.GITHUB_SHA ?? '').slice(0, 7);
+
 export default defineConfig({
   base: './',
+  define: { __BUILD_INFO__: JSON.stringify(commit ? `${buildTime} (${commit})` : buildTime) },
   plugins: [
     react(),
     VitePWA({

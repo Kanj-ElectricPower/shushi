@@ -4,7 +4,7 @@ import { formatDate, today } from '../domain/dates';
 import { unsettledReimbursables } from '../domain/summary';
 import type { Account, Tx, TxKind } from '../domain/types';
 import { AmountInput } from './AmountInput';
-import { Chips, Field, Select, nameOf, parseAmount, useBusy, useData, yen } from './ui';
+import { Chips, Field, Select, nameOf, parseAmount, toast, useBusy, useData, yen } from './ui';
 
 const KINDS: { id: TxKind; name: string }[] = [
   { id: 'expense', name: '支出' },
@@ -142,12 +142,14 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
     // 収入なら精算の紐付けを付け直す(立替精算以外に変えたときは外す)
     await saveTx(tx, kind === 'income' ? (isReimbursement ? settledIds : []) : editing?.kind === 'income' ? [] : undefined);
     if (accountId && !isBeforeStart) rememberAccount(kind, accountId);
+    toast(editing ? '変更を保存しました' : '記録しました');
     onDone();
   };
 
   const remove = async () => {
     if (!editing || !window.confirm('この記録を削除しますか？')) return;
     await deleteTx(editing.id);
+    toast('削除しました');
     onDone();
   };
 

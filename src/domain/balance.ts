@@ -44,6 +44,9 @@ export interface CardStatement {
 
 export const cardRecurringId = (cardId: string) => `card:${cardId}`;
 
+/** 手入力した引落(銀行→カードの振替)を、引落日の前後何日までその回の引落とみなすか */
+const MANUAL_PAYMENT_WINDOW = 5;
+
 /**
  * カードの締め期間ごとの利用額。締め日・引落日が未設定なら空。
  * 利用のあった最初の月から、upto を含む締め期間までを返す。
@@ -56,6 +59,8 @@ export function cardStatements(card: Account, txs: Tx[], upto: string): CardStat
   const charges = txs.filter(
     (tx) => tx.kind !== 'adjustment' && !(tx.kind === 'transfer' && tx.toAccountId === card.id) && txEffect(tx, card.id) !== 0,
   );
+  // 「未確定の予定」からではなく「＋」で手入力した引落。予定と二重に記録しないよう、日付の近い回を引落済みとして扱う
+  const manualPayments = txs.filter((tx) => tx.kind === 'transfer' && tx.toAccountId === card.id && !tx.recurringId);
   const openingDue = card.openingDue?.filter((d) => d.amount !== 0) ?? [];
   if (charges.length === 0 && openingDue.length === 0) return [];
   const closingOf = (month: string) => {
@@ -80,7 +85,11 @@ export function cardStatements(card: Account, txs: Tx[], upto: string): CardStat
     const amount = charges
       .filter((tx) => tx.date > prevClosing && tx.date <= closingDate)
       .reduce((sum, tx) => sum - txEffect(tx, card.id), 0) + openingDue.filter((d) => d.dueDate === dueDate).reduce((sum, d) => sum + d.amount, 0);
-    const paid = txs.some((tx) => tx.recurringId === cardRecurringId(card.id) && keys.includes(tx.recurringDate ?? ''));
+    const windowFrom = addDays(dueDate < paymentDate ? dueDate : paymentDate, -MANUAL_PAYMENT_WINDOW);
+    const windowTo = addDays(dueDate > paymentDate ? dueDate : paymentDate, MANUAL_PAYMENT_WINDOW);
+    const paid =
+      txs.some((tx) => tx.recurringId === cardRecurringId(card.id) && keys.includes(tx.recurringDate ?? '')) ||
+      manualPayments.some((tx) => tx.date >= windowFrom && tx.date <= windowTo);
     const skipped = keys.some((k) => card.skipped?.includes(k));
     result.push({ cardId: card.id, closingDate, dueDate, paymentDate, amount, paid, skipped });
     if (closingDate >= upto) break;

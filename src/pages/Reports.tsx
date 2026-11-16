@@ -73,7 +73,7 @@ export function Reports() {
           </div>
           <div>
             <div className="label">収支</div>
-            <div className="value">{signedYen(summary.net)}</div>
+            <div className={`value ${summary.net < 0 ? 'expense' : ''}`}>{signedYen(summary.net)}</div>
           </div>
         </div>
         <p className="sub" style={{ margin: '8px 0 0' }}>
