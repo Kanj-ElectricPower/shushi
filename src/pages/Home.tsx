@@ -26,7 +26,7 @@ export function Home() {
     ...item.template,
     date: item.date,
     recurringId: item.recurringId,
-    recurringDate: item.date,
+    recurringDate: item.recurringDate,
   });
 
   const confirm = async (item: PendingItem) => {
@@ -42,10 +42,10 @@ export function Home() {
     if (!window.confirm(`${formatDate(item.date)}の「${item.name}」をスキップしますか？`)) return;
     if (item.cardId) {
       const card = data.accounts.find((a) => a.id === item.cardId);
-      if (card) await db.accounts.update(card.id, { skipped: [...(card.skipped ?? []), item.date] });
+      if (card) await db.accounts.update(card.id, { skipped: [...(card.skipped ?? []), item.recurringDate] });
     } else {
       const rec = data.recurrings.find((r) => r.id === item.recurringId);
-      if (rec) await db.recurrings.update(rec.id, { skipped: [...rec.skipped, item.date] });
+      if (rec) await db.recurrings.update(rec.id, { skipped: [...rec.skipped, item.recurringDate] });
     }
   };
 

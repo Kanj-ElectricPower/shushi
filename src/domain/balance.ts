@@ -1,4 +1,5 @@
 import { dateInMonth, monthOf, addMonths } from './dates';
+import { shiftToBusinessDay } from './holidays';
 import type { Account, Tx } from './types';
 
 /** この記録が口座残高をいくら動かすか。 */
@@ -28,12 +29,16 @@ export interface CardStatement {
   cardId: string;
   /** 締め日 */
   closingDate: string;
-  /** 引落日 */
+  /** 約定の引落日(例: 翌月4日)。引落の記録との対応づけに使う */
+  dueDate: string;
+  /** 実際の引落日(土日祝・年末年始なら営業日にずらした日) */
   paymentDate: string;
   /** 対象期間の利用額 */
   amount: number;
   /** 引落(振替)を記録済みか */
   paid: boolean;
+  /** スキップ済みか */
+  skipped: boolean;
 }
 
 export const cardRecurringId = (cardId: string) => `card:${cardId}`;
@@ -62,12 +67,16 @@ export function cardStatements(card: Account, txs: Tx[], upto: string): CardStat
   for (;;) {
     const closingDate = closingOf(month);
     const [y, m] = month.split('-').map(Number);
-    const paymentDate = dateInMonth(y, m + offset, card.paymentDay);
+    const dueDate = dateInMonth(y, m + offset, card.paymentDay);
+    const paymentDate = shiftToBusinessDay(dueDate, card.paymentShift ?? 'next');
+    // 以前の版で約定日のまま記録した引落も、同じ回として扱う
+    const keys = [dueDate, paymentDate];
     const amount = charges
       .filter((tx) => tx.date > prevClosing && tx.date <= closingDate)
       .reduce((sum, tx) => sum - txEffect(tx, card.id), 0);
-    const paid = txs.some((tx) => tx.recurringId === cardRecurringId(card.id) && tx.recurringDate === paymentDate);
-    result.push({ cardId: card.id, closingDate, paymentDate, amount, paid });
+    const paid = txs.some((tx) => tx.recurringId === cardRecurringId(card.id) && keys.includes(tx.recurringDate ?? ''));
+    const skipped = keys.some((k) => card.skipped?.includes(k));
+    result.push({ cardId: card.id, closingDate, dueDate, paymentDate, amount, paid, skipped });
     if (closingDate >= upto) break;
     prevClosing = closingDate;
     month = addMonths(month, 1);
@@ -78,6 +87,6 @@ export function cardStatements(card: Account, txs: Tx[], upto: string): CardStat
 /** 今日以降で最初に来る、未記録の引落予定。 */
 export function nextCardPayment(card: Account, txs: Tx[], todayDate: string): CardStatement | undefined {
   return cardStatements(card, txs, todayDate).find(
-    (s) => s.paymentDate >= todayDate && !s.paid && s.amount > 0 && !card.skipped?.includes(s.paymentDate),
+    (s) => s.paymentDate >= todayDate && !s.paid && s.amount > 0 && !s.skipped,
   );
 }

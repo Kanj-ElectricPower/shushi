@@ -1,3 +1,5 @@
+import type { BusinessDayShift } from './holidays';
+
 export type AccountType = 'bank' | 'ic' | 'qr' | 'card' | 'nisa' | 'cash';
 
 export interface Account {
@@ -14,9 +16,11 @@ export interface Account {
   paymentDay?: number;
   /** カードのみ: 締め月から何か月後に引き落とすか(翌月=1) */
   paymentMonthOffset?: number;
+  /** カードのみ: 引落日が土日祝・年末年始のときにずらす方向(未設定は翌営業日) */
+  paymentShift?: BusinessDayShift;
   /** カードのみ: 引落口座 */
   paymentAccountId?: string;
-  /** カードのみ: スキップした引落予定日 */
+  /** カードのみ: スキップした引落予定(約定日または実際の引落日) */
   skipped?: string[];
 }
 

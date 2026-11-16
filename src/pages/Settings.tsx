@@ -7,6 +7,7 @@ import { DiagnosticsSection } from './Diagnostics';
 import { parseBackupJson, toBackupJson, toCsv } from '../domain/backup';
 import { accountBalance } from '../domain/balance';
 import { today } from '../domain/dates';
+import type { BusinessDayShift } from '../domain/holidays';
 import {
   ACCOUNT_TYPE_LABEL,
   INCOME_TYPE_LABEL,
@@ -166,6 +167,11 @@ const DAY_OPTIONS = [
   ...Array.from({ length: 30 }, (_, i) => ({ id: String(i + 1), name: `${i + 1}日` })),
   { id: '31', name: '月末' },
 ];
+const SHIFT_OPTIONS = [
+  { id: 'next', name: '翌営業日' },
+  { id: 'prev', name: '前営業日' },
+  { id: 'none', name: 'ずらさない' },
+];
 const OFFSET_OPTIONS = [
   { id: '0', name: '当月' },
   { id: '1', name: '翌月' },
@@ -182,6 +188,7 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
   const [paymentDay, setPaymentDay] = useState(account?.paymentDay ? String(account.paymentDay) : '');
   const [offset, setOffset] = useState(String(account?.paymentMonthOffset ?? 1));
   const [paymentAccountId, setPaymentAccountId] = useState(account?.paymentAccountId ?? '');
+  const [paymentShift, setPaymentShift] = useState<BusinessDayShift>(account?.paymentShift ?? 'next');
   const [archived, setArchived] = useState(account?.archived ?? false);
   const [error, setError] = useState('');
   const { busy, run } = useBusy();
@@ -204,6 +211,7 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
       next.paymentDay = paymentDay ? Number(paymentDay) : undefined;
       next.paymentMonthOffset = Number(offset);
       next.paymentAccountId = paymentAccountId || undefined;
+      next.paymentShift = paymentShift;
       next.skipped = account?.skipped;
     }
     await db.accounts.put(next);
@@ -270,6 +278,9 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
               />
             </Field>
           </div>
+          <Field label="引落日が土日祝・年末年始のとき">
+            <Select value={paymentShift} onChange={(v) => setPaymentShift(v as BusinessDayShift)} options={SHIFT_OPTIONS} />
+          </Field>
           <p className="sub">
             締め日と引落日を設定すると、次回の引落予定額を計算し、引落日にホームへ確定ボタンを表示します。記録開始より前の利用分は予定額に含まれないため、最初の引落は金額を修正して確定してください。
           </p>
@@ -308,7 +319,7 @@ function AccountsSection() {
               {ACCOUNT_TYPE_LABEL[a.type]}
               {a.type === 'card' &&
                 (a.closingDay && a.paymentDay
-                  ? `・${nameOf(DAY_OPTIONS, String(a.closingDay))}締め ${nameOf(OFFSET_OPTIONS, String(a.paymentMonthOffset ?? 1))}${nameOf(DAY_OPTIONS, String(a.paymentDay))}払い`
+                  ? `・${nameOf(DAY_OPTIONS, String(a.closingDay))}締め ${nameOf(OFFSET_OPTIONS, String(a.paymentMonthOffset ?? 1))}${nameOf(DAY_OPTIONS, String(a.paymentDay))}払い${(a.paymentShift ?? 'next') === 'none' ? '' : `(休日は${nameOf(SHIFT_OPTIONS, a.paymentShift ?? 'next')})`}`
                   : '・締め日と引落日が未設定')}
             </div>
           </div>

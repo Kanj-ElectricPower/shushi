@@ -18,6 +18,8 @@ const card: Account = {
   paymentDay: 10,
   paymentMonthOffset: 1,
   paymentAccountId: 'bank',
+  // 日付の計算そのものを確かめるため、休日のずらしは別のテストで扱う
+  paymentShift: 'none',
 };
 const sources: IncomeSource[] = [
   { id: 'tokyu', name: 'バイト', incomeType: 'salary', hasWithholding: false, order: 0 },
