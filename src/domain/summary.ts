@@ -38,7 +38,7 @@ export function monthSummary(txs: Tx[], sources: IncomeSource[], month: string):
     bySource: new Map(),
   };
   for (const tx of txs) {
-    if (monthOf(tx.date) !== month) continue;
+    if (monthOf(tx.date) !== month || tx.beforeStart) continue;
     if (tx.kind === 'expense') {
       if (tx.reimbursable) continue;
       s.expense += tx.amount;

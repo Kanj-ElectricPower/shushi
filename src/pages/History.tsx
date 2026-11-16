@@ -33,7 +33,7 @@ export function History() {
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
   const days = [...new Set(txs.map((tx) => tx.date))];
   const expenseTotal = txs.filter((tx) => tx.kind === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
-  const incomeTotal = txs.filter((tx) => tx.kind === 'income').reduce((sum, tx) => sum + tx.amount, 0);
+  const incomeTotal = txs.filter((tx) => tx.kind === 'income' && !tx.beforeStart).reduce((sum, tx) => sum + tx.amount, 0);
 
   return (
     <>
@@ -70,11 +70,12 @@ export function History() {
                     <div className="title">
                       {txTitle(tx, data)}
                       {tx.reimbursable && <span className="badge">{tx.settledByTxId ? '立替・精算済' : '立替'}</span>}
+                      {tx.beforeStart && <span className="badge">記録開始前</span>}
                     </div>
                     <div className="sub title">
                       {[
                         tx.kind === 'expense' ? nameOf(data.tags, tx.tagId, '') : '',
-                        tx.kind === 'transfer' ? '振替' : nameOf(data.accounts, tx.accountId),
+                        tx.kind === 'transfer' ? '振替' : tx.beforeStart ? '残高・収支に含めない' : nameOf(data.accounts, tx.accountId),
                         tx.memo,
                       ]
                         .filter(Boolean)

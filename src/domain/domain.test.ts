@@ -227,7 +227,7 @@ describe('バックアップ', () => {
 
   it('CSVは名称に変換し、カンマと引用符をエスケープする', () => {
     const lines = toCsv(data).split('\r\n');
-    expect(lines[1]).toBe('2026-11-01,支出,1200,銀行,,食費,,,,,,,"ランチ, ""A""定食"');
+    expect(lines[1]).toBe('2026-11-01,支出,1200,銀行,,食費,,,,,,,,"ランチ, ""A""定食"');
   });
 });
 
@@ -261,5 +261,20 @@ describe('古いバックアップ', () => {
   it('年収の壁が無いバックアップも読める', () => {
     const old = { app: 'balance-of-payment', version: 1, accounts: [], transactions: [], categories: [], tags: [], incomeSources: [], recurrings: [], quickButtons: [] };
     expect(parseBackupJson(JSON.stringify(old)).incomeWalls).toEqual([]);
+  });
+});
+
+describe('記録開始前の収入', () => {
+  it('残高と月の収支には入れず、年間の所得にだけ数える', () => {
+    const past = tx({ date: '2026-06-25', kind: 'income', amount: 9694, accountId: '', incomeSourceId: 'ta', gross: 10000, withholding: 306, beforeStart: true });
+    const now = tx({ date: '2026-11-25', kind: 'income', amount: 50000, accountId: 'bank', incomeSourceId: 'tokyu' });
+    const txs = [past, now];
+    expect(accountBalance(bank, txs)).toBe(150000);
+    expect(monthSummary(txs, sources, '2026-06').income).toBe(0);
+    expect(monthSummary(txs, sources, '2026-11').income).toBe(50000);
+    const y = taxableYear(txs, sources, 2026);
+    expect([y.salary, y.withholding, y.months[5].salary]).toEqual([60000, 306, 10000]);
+    expect(annualIncome(txs, sources, 2026).byType.get('salary')?.gross).toBe(60000);
+    expect(toCsv({ ...({ accounts: [], categories: [], tags: [], incomeSources: sources, recurrings: [], quickButtons: [], incomeWalls: [] } as unknown as AppData), transactions: [past] }).split('\r\n')[1]).toContain(',開始前,');
   });
 });

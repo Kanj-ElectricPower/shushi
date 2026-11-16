@@ -55,6 +55,11 @@ export interface Tx {
   gross?: number;
   /** 収入: 源泉徴収額 */
   withholding?: number;
+  /**
+   * 収入: 記録開始前の収入。口座残高(開始残高に含まれている)と月の収支には入れず、
+   * 年間の所得(年収の壁)の集計にだけ数える。accountId は空文字。
+   */
+  beforeStart?: boolean;
   /** 支出: 立替(後日精算される) */
   reimbursable?: boolean;
   /** 立替支出: 精算した収入の id */

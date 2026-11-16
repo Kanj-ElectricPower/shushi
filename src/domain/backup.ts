@@ -54,7 +54,7 @@ export function toCsv(data: AppData): string {
   const category = name(data.categories);
   const tag = name(data.tags);
   const source = name(data.incomeSources);
-  const header = ['日付', '種類', '金額', '口座', '振替先', 'カテゴリ', '目的タグ', '収入源', '額面', '源泉徴収額', '立替', '精算済み', 'メモ'];
+  const header = ['日付', '種類', '金額', '口座', '振替先', 'カテゴリ', '目的タグ', '収入源', '額面', '源泉徴収額', '立替', '精算済み', '記録開始前', 'メモ'];
   const rows = [...data.transactions]
     .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
     .map((tx) => [
@@ -70,6 +70,7 @@ export function toCsv(data: AppData): string {
       tx.withholding,
       tx.reimbursable ? '立替' : '',
       tx.reimbursable && tx.settledByTxId ? '済' : '',
+      tx.beforeStart ? '開始前' : '',
       tx.memo,
     ]);
   return '﻿' + [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';

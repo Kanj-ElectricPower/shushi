@@ -4,6 +4,7 @@ import type { Account, Tx } from './types';
 
 /** この記録が口座残高をいくら動かすか。 */
 export function txEffect(tx: Tx, accountId: string): number {
+  if (tx.beforeStart) return 0;
   switch (tx.kind) {
     case 'expense':
       return tx.accountId === accountId ? -tx.amount : 0;

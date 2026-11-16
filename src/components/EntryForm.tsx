@@ -58,6 +58,7 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
   const [withholding, setWithholding] = useState(base.withholding !== undefined ? String(base.withholding) : '');
   const [reimbursable, setReimbursable] = useState(base.reimbursable ?? false);
   const [memo, setMemo] = useState(base.memo ?? '');
+  const [beforeStart, setBeforeStart] = useState(base.beforeStart ?? false);
   const [settledIds, setSettledIds] = useState<string[]>(() =>
     editing ? data.transactions.filter((t) => t.settledByTxId === editing.id).map((t) => t.id) : [],
   );
@@ -81,6 +82,8 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
   const source = data.incomeSources.find((s) => s.id === incomeSourceId);
   const isReimbursement = kind === 'income' && source?.incomeType === 'reimbursement';
   const showTax = kind === 'income' && (source?.incomeType === 'salary' || source?.incomeType === 'misc');
+  // 記録開始前の収入は給与・雑所得だけ(年収の壁の集計用)。入金先は選ばない
+  const isBeforeStart = showTax && beforeStart;
   const settleCandidates = isReimbursement
     ? [...unsettledReimbursables(data.transactions), ...data.transactions.filter((t) => editing && t.settledByTxId === editing.id)].sort(
         (a, b) => a.date.localeCompare(b.date),
@@ -102,7 +105,7 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
       return setError(kind === 'adjustment' ? '金額を0以外の整数で入力してください' : '金額を1円以上の整数で入力してください');
     }
     if (!date) return setError('日付を入力してください');
-    if (!accountId) return setError(kind === 'income' ? '入金先を選んでください' : kind === 'transfer' ? '移動元を選んでください' : '支払元を選んでください');
+    if (!accountId && !isBeforeStart) return setError(kind === 'income' ? '入金先を選んでください' : kind === 'transfer' ? '移動元を選んでください' : '支払元を選んでください');
     if (kind === 'expense' && !categoryId) return setError('カテゴリを選んでください');
     if (kind === 'income' && !incomeSourceId) return setError('収入源を選んでください');
     if (kind === 'transfer' && (!toAccountId || toAccountId === accountId)) return setError('移動元と異なる移動先を選んでください');
@@ -116,7 +119,7 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
       date,
       kind,
       amount: value,
-      accountId,
+      accountId: isBeforeStart ? '' : accountId!,
       recurringId: base.recurringId,
       recurringDate: base.recurringDate,
       memo: memo.trim() || undefined,
@@ -132,12 +135,13 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
       tx.incomeSourceId = incomeSourceId;
       tx.gross = g;
       tx.withholding = w;
+      if (isBeforeStart) tx.beforeStart = true;
     } else if (kind === 'transfer') {
       tx.toAccountId = toAccountId;
     }
     // 収入なら精算の紐付けを付け直す(立替精算以外に変えたときは外す)
     await saveTx(tx, kind === 'income' ? (isReimbursement ? settledIds : []) : editing?.kind === 'income' ? [] : undefined);
-    rememberAccount(kind, accountId);
+    if (accountId && !isBeforeStart) rememberAccount(kind, accountId);
     onDone();
   };
 
@@ -205,7 +209,21 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
         </>
       )}
 
-      <div className={kind === 'transfer' ? 'grid2' : undefined}>
+      {showTax && (
+        <>
+          <label className="check">
+            <input type="checkbox" checked={beforeStart} onChange={(e) => setBeforeStart(e.target.checked)} />
+            <span>記録開始前の収入(年収の壁の集計用)</span>
+          </label>
+          {beforeStart && (
+            <p className="sub">
+              口座残高と月の収支には入れず、「集計 → 年間の所得」にだけ数えます。給与明細ごとでも、数か月分の合計でも入れられます。日付は入金日(合計なら最後の入金日)にしてください。
+            </p>
+          )}
+        </>
+      )}
+
+      <div className={kind === 'transfer' ? 'grid2' : undefined} hidden={isBeforeStart}>
         <Field label={kind === 'income' ? '入金先' : kind === 'transfer' ? '移動元' : kind === 'adjustment' ? '口座' : '支払元'}>
           <Select value={accountId} onChange={setAccountId} options={accountOptions} />
         </Field>
