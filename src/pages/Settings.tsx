@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Field, Select, download, nameOf, parseAmount, signedYen, useData, yen } from '../components/ui';
+import { Field, Select, download, nameOf, parseAmount, signedYen, useBusy, useData, useScrollTop, yen } from '../components/ui';
 import { db, loadAll, newId, replaceAll, resetAll, saveTx } from '../db/schema';
 import { parseBackupJson, toBackupJson, toCsv } from '../domain/backup';
 import { accountBalance } from '../domain/balance';
@@ -82,6 +82,7 @@ function ListCard<T extends { id: string }>({
   onSelect: (item: T) => void;
   empty: string;
 }) {
+  useScrollTop();
   return (
     <div className="card flush">
       {items.length === 0 && (
@@ -120,7 +121,18 @@ function ListCard<T extends { id: string }>({
   );
 }
 
-function FormActions({ onCancel, onDelete, error }: { onCancel: () => void; onDelete?: () => void; error: string }) {
+function FormActions({
+  onCancel,
+  onDelete,
+  error,
+  busy,
+}: {
+  onCancel: () => void;
+  onDelete?: () => void;
+  error: string;
+  busy: boolean;
+}) {
+  useScrollTop();
   return (
     <>
       {error && (
@@ -130,15 +142,15 @@ function FormActions({ onCancel, onDelete, error }: { onCancel: () => void; onDe
       )}
       <div className="actions">
         {onDelete && (
-          <button type="button" className="btn danger" onClick={onDelete}>
+          <button type="button" className="btn danger" onClick={onDelete} disabled={busy}>
             削除
           </button>
         )}
         <button type="button" className="btn" onClick={onCancel}>
           キャンセル
         </button>
-        <button type="submit" className="btn primary grow">
-          保存
+        <button type="submit" className="btn primary grow" disabled={busy}>
+          {busy ? '保存中…' : '保存'}
         </button>
       </div>
     </>
@@ -169,9 +181,11 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
   const [paymentAccountId, setPaymentAccountId] = useState(account?.paymentAccountId ?? '');
   const [archived, setArchived] = useState(account?.archived ?? false);
   const [error, setError] = useState('');
+  const { busy, run } = useBusy();
 
   const save = async () => {
     if (!name.trim()) return setError('名前を入力してください');
+    if (data.accounts.some((a) => a.name === name.trim() && a.id !== account?.id)) return setError('同じ名前の口座がすでにあります');
     const value = type === 'cash' ? 0 : parseAmount(opening);
     if (value === undefined || Number.isNaN(value)) return setError('金額を整数で入力してください');
     const next: Account = {
@@ -210,7 +224,7 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
       className="card"
       onSubmit={(e) => {
         e.preventDefault();
-        void save();
+        void run(save);
       }}
     >
       <Field label="名前">
@@ -264,7 +278,7 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
           <span>使わなくなった(入力の選択肢とホームから外す)</span>
         </label>
       )}
-      <FormActions onCancel={onClose} onDelete={account ? () => void remove() : undefined} error={error} />
+      <FormActions onCancel={onClose} onDelete={account ? () => void run(remove) : undefined} error={error} busy={busy} />
     </form>
   );
 }
@@ -313,6 +327,7 @@ function NameSection({ table }: { table: 'categories' | 'tags' }) {
   const label = table === 'categories' ? 'カテゴリ' : '目的タグ';
   const [editing, setEditing] = useState<{ id?: string; name: string } | null>(null);
   const [error, setError] = useState('');
+  const { busy, run } = useBusy();
 
   const close = () => {
     setEditing(null);
@@ -344,13 +359,13 @@ function NameSection({ table }: { table: 'categories' | 'tags' }) {
         className="card"
         onSubmit={(e) => {
           e.preventDefault();
-          void save();
+          void run(save);
         }}
       >
         <Field label={`${label}の名前`}>
           <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} autoFocus />
         </Field>
-        <FormActions onCancel={close} onDelete={editing.id ? () => void remove() : undefined} error={error} />
+        <FormActions onCancel={close} onDelete={editing.id ? () => void run(remove) : undefined} error={error} busy={busy} />
       </form>
     );
   }
@@ -372,9 +387,11 @@ function SourceForm({ source, onClose }: { source?: IncomeSource; onClose: () =>
   const [incomeType, setIncomeType] = useState<IncomeType>(source?.incomeType ?? 'salary');
   const [hasWithholding, setHasWithholding] = useState(source?.hasWithholding ?? false);
   const [error, setError] = useState('');
+  const { busy, run } = useBusy();
 
   const save = async () => {
     if (!name.trim()) return setError('名前を入力してください');
+    if (data.incomeSources.some((s) => s.name === name.trim() && s.id !== source?.id)) return setError('同じ名前の収入源がすでにあります');
     await db.incomeSources.put({
       id: source?.id ?? newId(),
       order: source?.order ?? nextOrder(data.incomeSources),
@@ -399,7 +416,7 @@ function SourceForm({ source, onClose }: { source?: IncomeSource; onClose: () =>
       className="card"
       onSubmit={(e) => {
         e.preventDefault();
-        void save();
+        void run(save);
       }}
     >
       <Field label="名前">
@@ -421,7 +438,7 @@ function SourceForm({ source, onClose }: { source?: IncomeSource; onClose: () =>
         <input type="checkbox" checked={hasWithholding} onChange={(e) => setHasWithholding(e.target.checked)} />
         <span>源泉徴収あり</span>
       </label>
-      <FormActions onCancel={onClose} onDelete={source ? () => void remove() : undefined} error={error} />
+      <FormActions onCancel={onClose} onDelete={source ? () => void run(remove) : undefined} error={error} busy={busy} />
     </form>
   );
 }
@@ -567,6 +584,7 @@ function RecurringForm({ rec, onClose }: { rec?: Recurring; onClose: () => void 
   const [active, setActive] = useState(rec?.active ?? true);
   const [template, setTemplate] = useState<TxTemplate>(rec?.template ?? { kind: 'expense' });
   const [error, setError] = useState('');
+  const { busy, run } = useBusy();
 
   const changeFreq = (next: Freq) => {
     // 曜日(0-6)と日(1-31)は範囲が違うので切り替え時に初期化する
@@ -603,7 +621,7 @@ function RecurringForm({ rec, onClose }: { rec?: Recurring; onClose: () => void 
       className="card"
       onSubmit={(e) => {
         e.preventDefault();
-        void save();
+        void run(save);
       }}
     >
       <Field label="名前">
@@ -630,7 +648,7 @@ function RecurringForm({ rec, onClose }: { rec?: Recurring; onClose: () => void 
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
         <span>有効(予定日にホームへ表示する)</span>
       </label>
-      <FormActions onCancel={onClose} onDelete={rec ? () => void remove() : undefined} error={error} />
+      <FormActions onCancel={onClose} onDelete={rec ? () => void run(remove) : undefined} error={error} busy={busy} />
     </form>
   );
 }
@@ -678,6 +696,7 @@ function QuickForm({ button, onClose }: { button?: QuickButton; onClose: () => v
   const [label, setLabel] = useState(button?.label ?? '');
   const [template, setTemplate] = useState<TxTemplate>(button?.template ?? { kind: 'expense' });
   const [error, setError] = useState('');
+  const { busy, run } = useBusy();
 
   const save = async () => {
     if (!label.trim()) return setError('ボタンの名前を入力してください');
@@ -701,14 +720,14 @@ function QuickForm({ button, onClose }: { button?: QuickButton; onClose: () => v
       className="card"
       onSubmit={(e) => {
         e.preventDefault();
-        void save();
+        void run(save);
       }}
     >
       <Field label="ボタンの名前">
         <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例: 学食" />
       </Field>
       <TemplateFields value={template} onChange={setTemplate} kinds={EXPENSE_ONLY} />
-      <FormActions onCancel={onClose} onDelete={button ? () => void remove() : undefined} error={error} />
+      <FormActions onCancel={onClose} onDelete={button ? () => void run(remove) : undefined} error={error} busy={busy} />
     </form>
   );
 }

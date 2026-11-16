@@ -3,7 +3,7 @@ import { deleteTx, newId, saveTx } from '../db/schema';
 import { formatDate, today } from '../domain/dates';
 import { unsettledReimbursables } from '../domain/summary';
 import type { Account, Tx, TxKind } from '../domain/types';
-import { Chips, Field, Select, nameOf, parseAmount, useData, yen } from './ui';
+import { Chips, Field, Select, nameOf, parseAmount, useBusy, useData, yen } from './ui';
 
 const KINDS: { id: TxKind; name: string }[] = [
   { id: 'expense', name: '支出' },
@@ -61,6 +61,7 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
     editing ? data.transactions.filter((t) => t.settledByTxId === editing.id).map((t) => t.id) : [],
   );
   const [error, setError] = useState('');
+  const { busy, run } = useBusy();
 
   const active = (a: Account) => !a.archived || a.id === editing?.accountId || a.id === editing?.toAccountId;
   const accounts = data.accounts.filter(active);
@@ -149,7 +150,7 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        void submit();
+        void run(submit);
       }}
     >
       {kind === 'adjustment' ? (
@@ -261,12 +262,12 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
       )}
       <div className="actions">
         {editing && (
-          <button type="button" className="btn danger" onClick={() => void remove()}>
+          <button type="button" className="btn danger" onClick={() => void run(remove)} disabled={busy}>
             削除
           </button>
         )}
-        <button type="submit" className="btn primary grow">
-          {editing ? '変更を保存' : '記録する'}
+        <button type="submit" className="btn primary grow" disabled={busy}>
+          {busy ? '保存中…' : editing ? '変更を保存' : '記録する'}
         </button>
       </div>
     </form>

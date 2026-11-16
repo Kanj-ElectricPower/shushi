@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { signedYen, useData, yen } from '../components/ui';
+import { signedYen, useBusy, useData, yen } from '../components/ui';
 import { db, newId, saveTx } from '../db/schema';
 import { accountBalance, cardUnpaid, nextCardPayment } from '../domain/balance';
 import { formatDate, formatMonth, monthOf, today } from '../domain/dates';
@@ -11,6 +11,7 @@ import type { EntryState } from './Entry';
 export function Home() {
   const data = useData();
   const navigate = useNavigate();
+  const { busy, run } = useBusy();
   const todayDate = today();
   const month = monthOf(todayDate);
   const summary = monthSummary(data.transactions, data.incomeSources, month);
@@ -94,14 +95,14 @@ export function Home() {
                   </div>
                   <div className="actions" style={{ marginTop: 6 }}>
                     {isComplete(item.template) && (
-                      <button className="btn small primary" onClick={() => void confirm(item)}>
+                      <button className="btn small primary" disabled={busy} onClick={() => void run(() => confirm(item))}>
                         確定
                       </button>
                     )}
                     <button className="btn small" onClick={() => edit(item)}>
                       {isComplete(item.template) ? '修正して確定' : '入力して確定'}
                     </button>
-                    <button className="btn small" onClick={() => void skip(item)}>
+                    <button className="btn small" disabled={busy} onClick={() => void run(() => skip(item))}>
                       スキップ
                     </button>
                   </div>

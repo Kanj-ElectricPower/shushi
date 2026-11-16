@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { addMonths, formatMonth } from '../domain/dates';
 import type { AppData } from '../domain/types';
 
@@ -24,6 +24,35 @@ export function parseAmount(s: string): number | undefined {
 export function nameOf(list: { id: string; name: string }[], id: string | undefined, fallback = '未設定'): string {
   if (!id) return fallback;
   return list.find((x) => x.id === id)?.name ?? '(削除済み)';
+}
+
+/**
+ * 保存処理の二重実行を防ぐ。処理中は busy が true になり、その間の呼び出しは無視する。
+ * 連打しても1回しか保存されない(state の反映を待たずに ref で弾く)。
+ */
+export function useBusy() {
+  const running = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<unknown>) => {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  };
+  return { busy, run };
+}
+
+/** 画面の切り替え時に先頭へスクロールする(長いフォームの下で保存したとき、結果が見えるように)。 */
+export function useScrollTop() {
+  // 新しいブラウザの scrollTo は Promise を返すので、それを片付け関数として返さないようブロックで包む
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
