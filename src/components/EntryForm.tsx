@@ -3,6 +3,7 @@ import { deleteTx, newId, saveTx } from '../db/schema';
 import { formatDate, today } from '../domain/dates';
 import { unsettledReimbursables } from '../domain/summary';
 import type { Account, Tx, TxKind } from '../domain/types';
+import { AmountInput } from './AmountInput';
 import { Chips, Field, Select, nameOf, parseAmount, useBusy, useData, yen } from './ui';
 
 const KINDS: { id: TxKind; name: string }[] = [
@@ -174,21 +175,20 @@ export function EntryForm({ initial, editing, onDone }: EntryFormProps) {
       {showTax && (
         <div className="grid2">
           <Field label="額面(任意)">
-            <input type="number" inputMode="numeric" value={gross} onChange={(e) => updateTax(e.target.value, withholding)} />
+            <AmountInput value={gross} onChange={(v) => updateTax(v, withholding)} />
           </Field>
           <Field label="源泉徴収額(任意)">
-            <input type="number" inputMode="numeric" value={withholding} onChange={(e) => updateTax(gross, e.target.value)} />
+            <AmountInput value={withholding} onChange={(v) => updateTax(gross, v)} />
           </Field>
         </div>
       )}
 
       <Field label={kind === 'income' ? (showTax ? '手取り額(入金額)' : '金額(入金額)') : '金額'}>
-        <input
+        <AmountInput
           className="amount"
-          type="number"
-          inputMode="numeric"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={setAmount}
+          allowNegative={kind === 'adjustment'}
           placeholder="0"
           autoFocus={!editing && base.amount === undefined}
         />

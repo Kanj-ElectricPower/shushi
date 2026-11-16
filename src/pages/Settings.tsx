@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { AmountInput } from '../components/AmountInput';
 import { Field, Select, download, nameOf, parseAmount, signedYen, useBusy, useData, useScrollTop, yen } from '../components/ui';
 import { db, loadAll, newId, replaceAll, resetAll, saveTx } from '../db/schema';
 import { parseBackupJson, toBackupJson, toCsv } from '../domain/backup';
@@ -243,7 +244,7 @@ function AccountForm({ account, onClose }: { account?: Account; onClose: () => v
         <p className="sub">現金は収入・支出だけを記録し、残高は管理しません。</p>
       ) : (
         <Field label={type === 'card' ? '記録開始時点の未払い額' : type === 'nisa' ? '記録開始時点の積立元本' : '記録開始時点の残高'}>
-          <input type="number" inputMode="numeric" value={opening} onChange={(e) => setOpening(e.target.value)} />
+          <AmountInput value={opening} onChange={setOpening} allowNegative />
         </Field>
       )}
       {type === 'card' && (
@@ -502,11 +503,9 @@ function TemplateFields({
         </Field>
       )}
       <Field label="金額(毎回変わるなら空欄)">
-        <input
-          type="number"
-          inputMode="numeric"
-          value={value.amount ?? ''}
-          onChange={(e) => set({ amount: e.target.value === '' ? undefined : Number(e.target.value) })}
+        <AmountInput
+          value={value.amount !== undefined ? String(value.amount) : ''}
+          onChange={(v) => set({ amount: v === '' ? undefined : Number(v) })}
         />
       </Field>
       {value.kind === 'expense' && (
@@ -801,12 +800,11 @@ function ReconcileRow({ account }: { account: Account }) {
         </span>
       </div>
       <Field label={isCard ? '実際の未払い額(カード会社のアプリ等で確認)' : '実際の残高'}>
-        <input
-          type="number"
-          inputMode="numeric"
+        <AmountInput
           value={actual}
-          onChange={(e) => {
-            setActual(e.target.value);
+          allowNegative
+          onChange={(v) => {
+            setActual(v);
             setDone('');
           }}
         />
