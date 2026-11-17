@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { MonthNav, nameOf, signedYen, useData, yen } from '../components/ui';
 import { addMonths, formatDate, monthOf, today } from '../domain/dates';
 import { monthSummary, unsettledReimbursables } from '../domain/summary';
@@ -28,6 +28,111 @@ function Breakdown({ title, totals, names }: { title: string; totals: Map<string
             </div>
           </div>
         ))}
+      </div>
+    </>
+  );
+}
+
+const SERIES_COLORS = 8;
+/** 円グラフに描く最大の区分数。超えた分は「その他」にまとめる(色が増えすぎると見分けられないため) */
+const MAX_SLICES = 6;
+const pct = (value: number, total: number) => `${(Math.round((value / total) * 1000) / 10).toFixed(1)}%`;
+
+/** 支出の内訳の円グラフ。割合と金額は下の一覧に書く(色だけに頼らない)。 */
+function PieBreakdown({ title, totals, names }: { title: string; totals: Map<string, number>; names: { id: string; name: string }[] }) {
+  const ranked = [...totals.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const total = ranked.reduce((sum, [, v]) => sum + v, 0);
+  const head = ranked.slice(0, ranked.length > MAX_SLICES ? MAX_SLICES - 1 : MAX_SLICES);
+  const tail = ranked.slice(head.length);
+  const label = (id: string) => nameOf(names, id || undefined, '未設定');
+
+  // 色は金額の順位ではなく項目に付ける(月を変えても同じ項目は同じ色)。番号が重なったら次の空きを使う
+  const indexOf = (id: string) => {
+    const i = names.findIndex((n) => n.id === id);
+    return i < 0 ? names.length : i;
+  };
+  const used = new Set<number>();
+  const colorOf = new Map<string, string>();
+  for (const [id] of [...head].sort((a, b) => indexOf(a[0]) - indexOf(b[0]))) {
+    let slot = indexOf(id) % SERIES_COLORS;
+    while (used.has(slot)) slot = (slot + 1) % SERIES_COLORS;
+    used.add(slot);
+    colorOf.set(id, `var(--series-${slot + 1})`);
+  }
+  const slices = head.map(([id, value]) => ({ id, name: label(id), value, color: colorOf.get(id)! }));
+  if (tail.length > 0) {
+    slices.push({ id: '__other', name: `その他(${tail.length}項目)`, value: tail.reduce((sum, [, v]) => sum + v, 0), color: 'var(--series-other)' });
+  }
+
+  return (
+    <>
+      <h2>{title}</h2>
+      <div className="card">
+        {slices.length === 0 ? (
+          <span className="muted">記録がありません。</span>
+        ) : (
+          <>
+            <div className="pie">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={slices}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius="58%"
+                    outerRadius="100%"
+                    startAngle={90}
+                    endAngle={-270}
+                    stroke="var(--surface)"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                  >
+                    {slices.map((s) => (
+                      <Cell key={s.id} fill={s.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(v) => `${yen(Number(v))} (${pct(Number(v), total)})`}
+                    contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8 }}
+                    itemStyle={{ color: 'var(--text)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pie-total">
+                <div className="sub">合計</div>
+                <div className="num">{yen(total)}</div>
+              </div>
+            </div>
+            <table className="plain num legend">
+              <thead>
+                <tr>
+                  <th>項目</th>
+                  <th>割合</th>
+                  <th>金額</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slices.map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <span className="swatch" style={{ background: s.color }} />
+                      {s.name}
+                    </td>
+                    <td>{pct(s.value, total)}</td>
+                    <td>{yen(s.value)}</td>
+                  </tr>
+                ))}
+                {tail.map(([id, value]) => (
+                  <tr key={id} className="sub">
+                    <td className="indent">{label(id)}</td>
+                    <td>{pct(value, total)}</td>
+                    <td>{yen(value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
     </>
   );
@@ -81,8 +186,8 @@ export function Reports() {
         </p>
       </div>
 
-      <Breakdown title="カテゴリ別の支出" totals={summary.byCategory} names={data.categories} />
-      <Breakdown title="目的タグ別の支出" totals={summary.byTag} names={data.tags} />
+      <PieBreakdown title="カテゴリ別の支出" totals={summary.byCategory} names={data.categories} />
+      <PieBreakdown title="目的タグ別の支出" totals={summary.byTag} names={data.tags} />
       <Breakdown title="収入源別の収入" totals={summary.bySource} names={data.incomeSources} />
 
       <h2>月別の推移(直近12か月)</h2>
