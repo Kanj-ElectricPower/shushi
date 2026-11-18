@@ -3,7 +3,7 @@ import { lastBackupAt, signedYen, toast, useBusy, useData, yen } from '../compon
 import { db, newId, saveTx } from '../db/schema';
 import { accountBalance, cardUnpaid, nextCardPayment } from '../domain/balance';
 import { formatDate, formatMonth, monthOf, today } from '../domain/dates';
-import { isComplete, pendingItems, type PendingItem } from '../domain/recurring';
+import { isComplete, lastRecurringAmount, pendingItems, type PendingItem } from '../domain/recurring';
 import { monthSummary, unsettledReimbursables } from '../domain/summary';
 import type { Tx } from '../domain/types';
 import type { EntryState } from './Entry';
@@ -41,8 +41,17 @@ export function Home() {
     toast(`「${item.name}」を記録しました`);
   };
 
+  // 金額を決めていない予定は、前回確定した金額を入力欄の初期値にする(1タップ確定はさせず、必ず確認してもらう)
+  const previousAmount = (item: PendingItem) =>
+    item.template.amount ? undefined : lastRecurringAmount(data.transactions, item.recurringId);
+
   const edit = (item: PendingItem) => {
-    const state: EntryState = { initial: pendingTx(item), title: `${item.name}の確定` };
+    const previous = previousAmount(item);
+    const state: EntryState = {
+      initial: previous !== undefined ? { ...pendingTx(item), amount: previous } : pendingTx(item),
+      title: `${item.name}の確定`,
+      hint: previous !== undefined ? `前回の金額 ${yen(previous)} を入れてあります。今回の金額に直してから記録してください。` : undefined,
+    };
     navigate('/entry', { state });
   };
 
@@ -107,7 +116,12 @@ export function Home() {
                 <div className="main">
                   <div className="title">{item.name}</div>
                   <div className="sub num">
-                    {formatDate(item.date)}・{item.template.amount ? yen(item.template.amount) : '金額未設定'}
+                    {formatDate(item.date)}・
+                    {item.template.amount
+                      ? yen(item.template.amount)
+                      : previousAmount(item) !== undefined
+                        ? `金額未定(前回 ${yen(previousAmount(item)!)})`
+                        : '金額未設定'}
                   </div>
                   <div className="actions" style={{ marginTop: 6 }}>
                     {isComplete(item.template) && (

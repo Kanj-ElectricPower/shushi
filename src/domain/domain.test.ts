@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseBackupJson, toBackupJson, toCsv } from './backup';
 import { accountBalance, cardRecurringId, cardStatements, cardUnpaid, nextCardPayment } from './balance';
-import { isComplete, occurrences, pendingItems } from './recurring';
+import { isComplete, lastRecurringAmount, occurrences, pendingItems } from './recurring';
 import { annualIncome, monthSummary, taxableYear, unsettledReimbursables } from './summary';
 import type { Account, AppData, IncomeSource, Recurring, Tx } from './types';
 
@@ -286,5 +286,18 @@ describe('記録開始前の収入', () => {
     expect([y.salary, y.withholding, y.months[5].salary]).toEqual([60000, 306, 10000]);
     expect(annualIncome(txs, sources, 2026).byType.get('salary')?.gross).toBe(60000);
     expect(toCsv({ ...({ accounts: [], categories: [], tags: [], incomeSources: sources, recurrings: [], quickButtons: [], incomeWalls: [] } as unknown as AppData), transactions: [past] }).split('\r\n')[1]).toContain(',開始前,');
+  });
+});
+
+describe('金額が毎回変わる定期予定', () => {
+  it('最後に確定した回の金額を返す', () => {
+    const txs = [
+      tx({ date: '2026-10-05', kind: 'expense', amount: 3300, accountId: 'card', recurringId: 'claude', recurringDate: '2026-10-05' }),
+      tx({ date: '2026-11-05', kind: 'expense', amount: 3412, accountId: 'card', recurringId: 'claude', recurringDate: '2026-11-05' }),
+      tx({ date: '2026-09-05', kind: 'expense', amount: 3150, accountId: 'card', recurringId: 'claude', recurringDate: '2026-09-05' }),
+      tx({ date: '2026-12-01', kind: 'expense', amount: 980, accountId: 'card', recurringId: 'other' }),
+    ];
+    expect(lastRecurringAmount(txs, 'claude')).toBe(3412);
+    expect(lastRecurringAmount(txs, 'none')).toBeUndefined();
   });
 });

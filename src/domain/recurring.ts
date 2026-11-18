@@ -34,6 +34,19 @@ export interface PendingItem {
   cardId?: string;
 }
 
+/**
+ * その定期予定で最後に確定した記録の金額。金額が毎回変わる予定(ドル建てのサブスクなど)で、
+ * 入力欄の初期値にする。まだ確定したことがなければ undefined。
+ */
+export function lastRecurringAmount(txs: Tx[], recurringId: string): number | undefined {
+  let last: Tx | undefined;
+  for (const tx of txs) {
+    if (tx.recurringId !== recurringId) continue;
+    if (!last || tx.date > last.date || (tx.date === last.date && tx.createdAt > last.createdAt)) last = tx;
+  }
+  return last?.amount;
+}
+
 /** 記録に必要な項目が揃っていて、そのまま確定できるか。 */
 export function isComplete(t: TxTemplate): boolean {
   if (!t.amount || t.amount <= 0 || !t.accountId) return false;

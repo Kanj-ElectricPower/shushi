@@ -6,6 +6,8 @@ import type { Tx } from '../domain/types';
 export interface EntryState {
   initial?: Partial<Tx>;
   title?: string;
+  /** 入力欄の上に出す補足(前回の金額を入れてあることなど) */
+  hint?: string;
 }
 
 export function Entry() {
@@ -24,6 +26,7 @@ export function Entry() {
   return (
     <>
       <h1>{editing ? '記録の編集' : (state.title ?? '記録の入力')}</h1>
+      {!editing && state.hint && <div className="notice">{state.hint}</div>}
       {/* key を変えて、別の記録や初期値に切り替えたときに入力欄を作り直す */}
       <EntryForm key={id ?? location.key} editing={editing} initial={state.initial} onDone={done} />
     </>
